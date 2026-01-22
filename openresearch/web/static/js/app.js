@@ -17,7 +17,12 @@ if (window.marked) {
     const originalCode = renderer.code.bind(renderer);
 
     // Handle inline math: $...$ and display math: $$...$$
-    renderer.paragraph = function(text) {
+    renderer.paragraph = function (text) {
+        // If text is not a string (e.g., tokens or null), pass through to original
+        if (typeof text !== 'string') {
+            return originalParagraph(text);
+        }
+
         // Handle display math blocks $$...$$
         text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, equation) => {
             try {
@@ -38,7 +43,7 @@ if (window.marked) {
     };
 
     // Handle code blocks with language "math"
-    renderer.code = function(code, language) {
+    renderer.code = function (code, language) {
         if (language === 'math' && window.katex) {
             try {
                 return katex.renderToString(code, { displayMode: true, throwOnError: false });
@@ -689,7 +694,8 @@ function renderFullMessage(msgObj, idx, msgHash) {
         if (part.type === 'text') {
             const textNode = document.createElement('div');
             textNode.className = 'text-content';
-            textNode.innerHTML = window.marked ? marked.parse(part.text) : part.text;
+            const safeText = (typeof part.text === 'string') ? part.text : String(part.text || '');
+            textNode.innerHTML = window.marked ? marked.parse(safeText) : safeText;
             messageDiv.appendChild(textNode);
         } else if (part.type === 'tool') {
             const toolBlock = document.createElement('div');

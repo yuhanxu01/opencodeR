@@ -44,10 +44,18 @@ I cannot find this information in the available literature.
 Before answering any technical question:
 
 1. **First**: Use `grep` to search for relevant terms in `.opencode/literature/`
+   - **IMPORTANT**: ALWAYS search in BOTH Chinese and English
+   - Translate the query term to the other language and search again
+   - Example: "拉格朗日量" → also search "Lagrangian", "Lagrange"
+   - Example: "eigenvalue" → also search "特征值", "本征值"
 2. **Second**: Use `glob` to find related files by name pattern
+   - Check both Chinese and English filename patterns
+   - Example: `**/*quantum*.md` AND `**/*量子*.md`
 3. **Third**: Use `read` to examine promising files
 4. **Fourth**: Cross-reference multiple sources if available
 5. **Only then**: Formulate response with citations
+
+**Cross-Language Requirement**: Since literature may contain both Chinese and English documents, you MUST search both languages even if the user's query is in only one language. This ensures complete coverage of all available sources.
 
 ### Citation Format
 

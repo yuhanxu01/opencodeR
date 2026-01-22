@@ -1,0 +1,83 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenResearch</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <span class="brand">OpenResearch</span>
+            <div style="display: flex; gap: 8px;">
+                <button class="header-action-btn" onclick="toggleSelectionMode()" title="Select Conversations">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="9" y1="6" x2="20" y2="6"></line>
+                        <line x1="9" y1="12" x2="20" y2="12"></line>
+                        <line x1="9" y1="18" x2="20" y2="18"></line>
+                        <line x1="5" y1="6" x2="5.01" y2="6"></line>
+                        <line x1="5" y1="12" x2="5.01" y2="12"></line>
+                        <line x1="5" y1="18" x2="5.01" y2="18"></line>
+                    </svg>
+                </button>
+                <button class="new-chat-btn" onclick="newChat()" title="New Chat">+</button>
+            </div>
+        </div>
+        <div class="history-list" id="historyList">
+            <!-- History items will be injected here -->
+        </div>
+        <button class="settings-btn" onclick="openSettings()">⚙️ API Settings</button>
+    </div>
+
+    <div class="main-chat">
+        {% block content %}{% endblock %}
+    </div>
+
+    <div class="right-sidebar" id="rightSidebar">
+        <div class="sidebar-section">
+            <h3 class="section-title">Execution Plan</h3>
+            <div id="planProgress" class="plan-progress">
+                <!-- Plan items will be injected here -->
+                <div class="empty-state">No active plan</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <h2>Deep Thinking Tool Setup</h2>
+            <form id="apiConfigForm">
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem;">
+                    Configure your DeepSeek API key to enable the "Deep Thinking" reasoning tool.
+                </p>
+                <div class="form-group">
+                    <label>DeepSeek API Key</label>
+                    <input type="password" id="deepseekKey" placeholder="sk-..." required>
+                </div>
+                <div class="btn-row">
+                    <button type="button" class="secondary" onclick="closeSettings()">Cancel</button>
+                    <button type="submit" class="primary">Save Key</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        window.SERVER_URL = "{{ server_url }}";
+        window.WORKSPACE_DIR = "{{ workspace_dir|escapejs }}";
+    </script>
+    <script src="{% static 'js/app.js' %}"></script>
+</body>
+
+</html>

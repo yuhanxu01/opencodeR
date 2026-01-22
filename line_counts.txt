@@ -1,0 +1,5 @@
+openresearch/web/static/js/app.js: 324
+sdks/vscode/esbuild.js: 54
+packages/opencode/test/fixture/lsp/fake-lsp-server.js: 77
+packages/app/vite.js: 26
+packages/app/public/oc-theme-preload.js: 28

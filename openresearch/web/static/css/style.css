@@ -309,6 +309,75 @@ body {
     }
 }
 
+/* Streaming text animation - 流式文本显示 */
+@keyframes streamIn {
+    from {
+        opacity: 0;
+        filter: blur(4px);
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        filter: blur(0);
+        transform: translateY(0);
+    }
+}
+
+.streaming-text {
+    animation: streamIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    position: relative;
+}
+
+/* 流式显示时的内容也应用微妙的动画 */
+.streaming-text p,
+.streaming-text ul,
+.streaming-text ol,
+.streaming-text pre,
+.streaming-text blockquote {
+    animation: streamIn 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    animation-delay: 0.05s;
+}
+
+/* 打字机光标效果 */
+@keyframes blink {
+    0%, 49% {
+        opacity: 1;
+    }
+    50%, 100% {
+        opacity: 0;
+    }
+}
+
+/* 只在 typing 状态时显示光标 */
+.text-content.typing::after {
+    content: '';
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent);
+    margin-left: 2px;
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+}
+
+/* Tool fade in animation - 工具块淡入 */
+@keyframes toolFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.tool-fade-in {
+    animation: toolFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
 .message.user {
     display: flex;
     flex-direction: column;

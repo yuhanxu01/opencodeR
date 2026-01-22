@@ -28,6 +28,8 @@ let isBusy = false;
 let isDeleting = false;
 let pendingPermissions = new Set();
 let pollInterval = null;
+let messageCache = new Map(); // 缓存消息内容，用于检测变化和流式显示
+let lastMessageCount = 0; // 跟踪消息数量
 
 // Toast notification system
 function showToast(message, type = 'info') {
@@ -199,6 +201,11 @@ function updateBusyStatus(busy) {
             userInput.disabled = false;
             userInput.focus();
         }
+
+        // 移除所有打字机光标效果
+        document.querySelectorAll('.text-content.typing').forEach(el => {
+            el.classList.remove('typing');
+        });
 
         // 停止轮询
         if (pollInterval) {
@@ -395,6 +402,14 @@ async function createSession() {
 
 async function loadSessionChat(sessionID, forceUpdate = false) {
     if (!sessionID) return;
+
+    // 切换会话时清空消息缓存
+    if (currentSessionID !== sessionID) {
+        console.log('[loadSessionChat] Switching session, clearing cache');
+        messageCache.clear();
+        lastMessageCount = 0;
+    }
+
     currentSessionID = sessionID;
     localStorage.setItem('lastSessionID', sessionID);
     welcomeScreen.style.display = 'none';
@@ -583,15 +598,53 @@ function renderFullMessage(msgObj) {
     const role = msgObj.info.role;
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
-    msgObj.parts.forEach(part => {
+    messageDiv.dataset.messageId = msgObj.info.id;
+
+    msgObj.parts.forEach((part, partIndex) => {
         if (part.type === 'text') {
             const textNode = document.createElement('div');
             textNode.className = 'text-content';
+            textNode.dataset.partIndex = partIndex;
+
+            // 检查是否是新内容或更新的内容
+            const cacheKey = `${msgObj.info.id}-${partIndex}`;
+            const cachedText = messageCache.get(cacheKey);
+            const isNew = !cachedText || cachedText !== part.text;
+            const isUpdating = cachedText && cachedText !== part.text;
+
+            if (isNew && role === 'assistant') {
+                // 对助手的新内容应用流式动画
+                textNode.classList.add('streaming-text');
+                messageCache.set(cacheKey, part.text);
+
+                // 添加打字机光标（只在正在输入时显示）
+                if (isBusy) {
+                    textNode.classList.add('typing');
+                }
+            } else if (isUpdating && role === 'assistant') {
+                // 内容更新时也显示流式效果
+                textNode.classList.add('streaming-text', 'typing');
+                messageCache.set(cacheKey, part.text);
+            }
+
             textNode.innerHTML = window.marked ? marked.parse(part.text) : part.text;
             messageDiv.appendChild(textNode);
+
+            // 移除动画类
+            if ((isNew || isUpdating) && role === 'assistant') {
+                setTimeout(() => {
+                    textNode.classList.remove('streaming-text');
+                    // 只有在不忙碌时才移除光标
+                    if (!isBusy) {
+                        textNode.classList.remove('typing');
+                    }
+                }, 800);
+            }
         } else if (part.type === 'tool') {
             const toolBlock = document.createElement('div');
             toolBlock.className = 'tool-block';
+            toolBlock.dataset.partIndex = partIndex;
+
             const s = part.state;
             const statusClass = s.status === 'error' ? 'error' : (s.status === 'completed' ? 'success' : 'running');
 
@@ -600,6 +653,15 @@ function renderFullMessage(msgObj) {
             if (input.filePath) label += `: ${input.filePath.split('/').pop()}`;
             else if (input.path) label += `: ${input.path.split('/').pop()}`;
             else if (input.command) label += `: ${input.command.split(' ')[0]}...`;
+
+            // 检查是否是新的工具调用
+            const cacheKey = `${msgObj.info.id}-tool-${partIndex}`;
+            const isNewTool = !messageCache.has(cacheKey);
+
+            if (isNewTool) {
+                toolBlock.classList.add('tool-fade-in');
+                messageCache.set(cacheKey, true);
+            }
 
             toolBlock.innerHTML = `
                 <div class="tool-header" onclick="this.parentElement.classList.toggle('expanded')">

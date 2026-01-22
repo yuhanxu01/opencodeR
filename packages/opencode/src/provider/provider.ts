@@ -97,6 +97,15 @@ export namespace Provider {
         },
       }
     },
+    async deepseek() {
+      return {
+        autoload: false,
+        options: {
+          // DeepSeek API compatibility settings
+          compatibility: "compatible",
+        },
+      }
+    },
     async opencode(input) {
       const hasKey = await (async () => {
         const env = Env.all()

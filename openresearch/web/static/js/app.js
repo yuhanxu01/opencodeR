@@ -28,11 +28,31 @@ let isBusy = false;
 let isDeleting = false;
 let pendingPermissions = new Set();
 
+// Toast notification system
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
 // Initialization
 async function init() {
     await loadSessions();
     setupSSE();
     userInput?.focus();
+
+    // Restore last session from localStorage
+    const lastSession = localStorage.getItem('lastSessionID');
+    if (lastSession) {
+        loadSessionChat(lastSession);
+    }
 }
 
 // UI Handlers
@@ -110,7 +130,7 @@ function updateBusyStatus(busy) {
             indicator.className = 'message assistant';
             indicator.innerHTML = `<div class="working-content"><span class="pulse-dot"></span><span>Working...</span></div>`;
             chatContainer.appendChild(indicator);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+            smoothScrollToBottom();
         }
     } else { existing?.remove(); }
 }
@@ -196,21 +216,28 @@ async function deleteSession(sessionID, skipReload = false) {
     const oldDeleting = isDeleting;
     isDeleting = true;
     try {
-        const url = new URL(window.location.origin + `/api/session/${sessionID}/`);
-        console.log(`[Fetch] POST to ${url.href}`);
+        // Use relative path to hit Django proxy endpoint
+        const url = `/api/session/${sessionID}/`;
+        console.log(`[Fetch] DELETE to ${url}`);
 
-        const res = await fetch(url.href, {
-            method: 'POST', // Switched to POST for maximum compatibility
-            cache: 'no-cache'
+        const res = await fetch(url, {
+            method: 'DELETE',
+            cache: 'no-cache',
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
 
         if (!res.ok) {
             const errText = await res.text();
-            throw new Error(`Server ${res.status}: ${errText}`);
+            throw new Error(`Failed to delete session: ${res.status} - ${errText}`);
         }
+
+        console.log(`[Success] Session ${sessionID} deleted`);
 
         if (sessionID === currentSessionID) {
             currentSessionID = null;
+            localStorage.removeItem('lastSessionID');
             chatContainer.innerHTML = '';
             welcomeScreen.style.display = 'flex';
             const rs = document.getElementById('rightSidebar');
@@ -221,7 +248,9 @@ async function deleteSession(sessionID, skipReload = false) {
         return true;
     } catch (e) {
         console.error('Delete failed:', e);
-        if (!skipReload) alert('Delete failed: ' + e.message);
+        if (!skipReload) {
+            showToast('Failed to delete session: ' + e.message, 'error');
+        }
         throw e;
     } finally {
         isDeleting = oldDeleting;
@@ -230,17 +259,24 @@ async function deleteSession(sessionID, skipReload = false) {
 
 async function deleteSelectedSessions() {
     const checkboxes = document.querySelectorAll('.session-checkbox:checked');
-    if (checkboxes.length === 0) return;
+    if (checkboxes.length === 0) {
+        showToast('Please select at least one conversation', 'warning');
+        return;
+    }
 
-    if (confirm(`Delete ${checkboxes.length} selected conversations?`)) {
+    if (confirm(`Delete ${checkboxes.length} selected conversation${checkboxes.length > 1 ? 's' : ''}?`)) {
         isDeleting = true;
         const ids = Array.from(checkboxes).map(cb => cb.value);
         let failCount = 0;
+        let successCount = 0;
+
+        showToast(`Deleting ${ids.length} conversation${ids.length > 1 ? 's' : ''}...`, 'info');
 
         try {
             for (let i = 0; i < ids.length; i++) {
                 try {
                     await deleteSession(ids[i], true); // true means skip individual reloads
+                    successCount++;
                 } catch (err) {
                     failCount++;
                 }
@@ -248,8 +284,12 @@ async function deleteSelectedSessions() {
         } finally {
             isDeleting = false;
             await loadSessions(); // One final reload
+            toggleSelectionMode(); // Exit selection mode
+
             if (failCount > 0) {
-                alert(`Batch delete finished with ${failCount} failures.`);
+                showToast(`Deleted ${successCount} conversation(s), ${failCount} failed`, 'warning');
+            } else {
+                showToast(`Successfully deleted ${successCount} conversation(s)`, 'success');
             }
         }
     }
@@ -260,18 +300,29 @@ async function createSession() {
         const url = new URL(`${SERVER_URL}/session`);
         url.searchParams.set('directory', WORKSPACE_DIR);
         const res = await fetch(url.href, { method: 'POST' });
+
+        if (!res.ok) {
+            throw new Error(`Failed to create session: ${res.status}`);
+        }
+
         const sess = await res.json();
         currentSessionID = sess.id;
+        localStorage.setItem('lastSessionID', sess.id);
         chatContainer.innerHTML = '';
         welcomeScreen.style.display = 'flex';
         rightSidebar.style.display = 'none';
         await loadSessions();
-    } catch (e) { }
+        showToast('New conversation created', 'success');
+    } catch (e) {
+        console.error('Failed to create session:', e);
+        showToast('Failed to create new conversation', 'error');
+    }
 }
 
 async function loadSessionChat(sessionID) {
     if (!sessionID) return;
     currentSessionID = sessionID;
+    localStorage.setItem('lastSessionID', sessionID);
     welcomeScreen.style.display = 'none';
 
     try {
@@ -313,7 +364,7 @@ async function loadSessionChat(sessionID) {
         await renderPendingApprovals();
 
         if (working) chatContainer.appendChild(working);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        smoothScrollToBottom();
     } catch (e) { }
 }
 
@@ -381,7 +432,7 @@ function renderPlanProgress(tasks) {
 
 async function sendMessage() {
     const text = userInput.value.trim();
-    if (!text) return;
+    if (!text || isBusy) return;
     if (!currentSessionID) await createSession();
 
     // Immediately show user message and working indicator for instant feedback
@@ -403,12 +454,14 @@ async function sendMessage() {
 
         if (!response.ok) {
             updateBusyStatus(false);
-            alert(`Request failed: ${response.status}`);
+            const errorText = await response.text();
+            showToast(`Request failed: ${response.status} - ${errorText}`, 'error');
         }
         // Note: SSE events will handle updating the UI with the response
     } catch (e) {
         updateBusyStatus(false);
-        alert(e.message);
+        showToast(`Failed to send message: ${e.message}`, 'error');
+        console.error('Send message error:', e);
     }
 }
 
@@ -421,7 +474,15 @@ function appendUserMessage(text) {
     textNode.innerHTML = window.marked ? marked.parse(text) : text;
     messageDiv.appendChild(textNode);
     chatContainer.appendChild(messageDiv);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    smoothScrollToBottom();
+}
+
+// Smooth scroll to bottom
+function smoothScrollToBottom() {
+    chatContainer.scrollTo({
+        top: chatContainer.scrollHeight,
+        behavior: 'smooth'
+    });
 }
 
 function renderFullMessage(msgObj) {
@@ -475,20 +536,49 @@ window.deleteSession = deleteSession;
 window.deleteSelectedSessions = deleteSelectedSessions;
 window.toggleSelectionMode = toggleSelectionMode;
 
+// Input handling
+userInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+});
+
+userInput?.addEventListener('input', () => {
+    const sendBtn = document.querySelector('.send-btn');
+    if (sendBtn) {
+        sendBtn.disabled = isBusy || !userInput.value.trim();
+    }
+});
+
 document.getElementById('apiConfigForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const deepseekKey = document.getElementById('deepseekKey').value;
+
+    if (!deepseekKey || !deepseekKey.startsWith('sk-')) {
+        showToast('Please enter a valid API key (starts with sk-)', 'warning');
+        return;
+    }
+
     try {
         const url = new URL(`${SERVER_URL}/auth/deepseek`);
         url.searchParams.set('directory', WORKSPACE_DIR);
-        await fetch(url.href, {
+        const res = await fetch(url.href, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ key: deepseekKey })
         });
-        alert("Saved!");
+
+        if (!res.ok) {
+            throw new Error(`Failed to save API key: ${res.status}`);
+        }
+
+        showToast("API key saved successfully!", 'success');
         closeSettings();
-    } catch (e) { alert(e.message); }
+    } catch (e) {
+        showToast(`Failed to save API key: ${e.message}`, 'error');
+        console.error('API config error:', e);
+    }
 });
 
 init();

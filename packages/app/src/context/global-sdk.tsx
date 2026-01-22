@@ -29,7 +29,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     let last = 0
 
     const key = (directory: string, payload: Event) => {
-      if (payload.type === "session.status") return `session.status:${directory}:${payload.properties.sessionID}`
+      // Don't coalesce session.status events - users need to see all state transitions
+      // if (payload.type === "session.status") return `session.status:${directory}:${payload.properties.sessionID}`
       if (payload.type === "lsp.updated") return `lsp.updated:${directory}`
       if (payload.type === "message.part.updated") {
         const part = payload.properties.part

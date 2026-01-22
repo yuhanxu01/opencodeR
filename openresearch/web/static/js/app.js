@@ -27,6 +27,7 @@ let lastRenderedState = "";
 let isBusy = false;
 let isDeleting = false;
 let pendingPermissions = new Set();
+let pollInterval = null;
 
 // Toast notification system
 function showToast(message, type = 'info') {
@@ -82,57 +83,130 @@ let isInteracting = false;
 
 // SSE for Real-time Events
 let evtSource;
+let sseReconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+
 function setupSSE() {
-    if (evtSource) evtSource.close();
+    if (evtSource) {
+        evtSource.close();
+        evtSource = null;
+    }
+
     const url = new URL(`${SERVER_URL}/event`);
     url.searchParams.set('directory', WORKSPACE_DIR);
+
+    console.log('[SSE] Connecting to event stream...');
     evtSource = new EventSource(url.href);
+
+    evtSource.onopen = () => {
+        console.log('[SSE] Connected successfully');
+        sseReconnectAttempts = 0;
+        showToast('Connected to server', 'success');
+    };
+
     evtSource.onmessage = (e) => {
         try {
             const event = JSON.parse(e.data);
             handleServerEvent(event);
-        } catch (err) { }
+        } catch (err) {
+            console.error('[SSE] Failed to parse event:', err, e.data);
+        }
     };
-    evtSource.onerror = () => setTimeout(setupSSE, 3000);
+
+    evtSource.onerror = (err) => {
+        console.error('[SSE] Connection error:', err);
+        evtSource.close();
+
+        if (sseReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            sseReconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, sseReconnectAttempts - 1), 30000);
+            console.log(`[SSE] Reconnecting in ${delay}ms (attempt ${sseReconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+            setTimeout(setupSSE, delay);
+        } else {
+            console.error('[SSE] Max reconnection attempts reached');
+            showToast('Lost connection to server. Please refresh the page.', 'error');
+        }
+    };
 }
 
 function handleServerEvent(event) {
     const sessionID = event.properties?.sessionID || event.sessionID;
+    console.log('[SSE Event]', event.type, sessionID === currentSessionID ? '(current)' : '(other)');
 
     if (event.type === 'session.updated' && !isDeleting && !isInteracting) loadSessions();
 
     if (sessionID === currentSessionID) {
-        if (event.type === 'session.status') updateBusyStatus(event.status.type === 'busy');
+        if (event.type === 'session.status') {
+            console.log('[Status]', event.status.type);
+            updateBusyStatus(event.status.type === 'busy');
+        }
 
         if (event.type === 'permission.asked') {
             pendingPermissions.add(event.id);
-            loadSessionChat(currentSessionID);
+            loadSessionChat(currentSessionID, true);
         }
 
         if (event.type === 'permission.replied') {
             pendingPermissions.delete(event.requestID);
-            loadSessionChat(currentSessionID);
+            loadSessionChat(currentSessionID, true);
         }
 
+        // 实时更新消息内容
         if (event.type?.includes('message') || event.type?.includes('part')) {
-            loadSessionChat(currentSessionID);
+            console.log('[Content Update] Reloading chat...');
+            loadSessionChat(currentSessionID, true);
         }
     }
 }
 
 function updateBusyStatus(busy) {
     isBusy = busy;
+    console.log('[updateBusyStatus]', busy ? 'BUSY' : 'IDLE');
+
     const existing = document.getElementById('working-indicator');
+    const sendBtn = document.querySelector('.send-btn');
+
     if (busy) {
+        // Show working indicator
         if (!existing) {
             const indicator = document.createElement('div');
             indicator.id = 'working-indicator';
             indicator.className = 'message assistant';
-            indicator.innerHTML = `<div class="working-content"><span class="pulse-dot"></span><span>Working...</span></div>`;
+            indicator.innerHTML = `<div class="working-content"><span class="pulse-dot"></span><span>Thinking...</span></div>`;
             chatContainer.appendChild(indicator);
             smoothScrollToBottom();
         }
-    } else { existing?.remove(); }
+        // Disable input
+        if (sendBtn) sendBtn.disabled = true;
+        if (userInput) userInput.disabled = true;
+
+        // 启动轮询以确保 UI 更新（备用机制）
+        if (!pollInterval) {
+            console.log('[Poll] Starting polling for updates');
+            pollInterval = setInterval(() => {
+                if (currentSessionID && isBusy) {
+                    console.log('[Poll] Checking for updates...');
+                    loadSessionChat(currentSessionID, true);
+                }
+            }, 2000); // 每2秒轮询一次
+        }
+    } else {
+        // Remove working indicator
+        existing?.remove();
+        // Re-enable input
+        if (sendBtn) sendBtn.disabled = false;
+        if (userInput) {
+            userInput.disabled = false;
+            userInput.focus();
+        }
+
+        // 停止轮询
+        if (pollInterval) {
+            console.log('[Poll] Stopping polling');
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
 }
 
 async function loadSessions() {
@@ -319,7 +393,7 @@ async function createSession() {
     }
 }
 
-async function loadSessionChat(sessionID) {
+async function loadSessionChat(sessionID, forceUpdate = false) {
     if (!sessionID) return;
     currentSessionID = sessionID;
     localStorage.setItem('lastSessionID', sessionID);
@@ -332,7 +406,14 @@ async function loadSessionChat(sessionID) {
         const messages = await res.json();
 
         const currentState = JSON.stringify({ messages, pending: Array.from(pendingPermissions) });
-        if (currentState === lastRenderedState) return;
+
+        // 只有在非强制更新且状态完全相同时才跳过
+        if (!forceUpdate && currentState === lastRenderedState) {
+            console.log('[loadSessionChat] State unchanged, skipping render');
+            return;
+        }
+
+        console.log('[loadSessionChat] Rendering', messages.length, 'messages');
         lastRenderedState = currentState;
 
         const working = document.getElementById('working-indicator');
@@ -365,7 +446,9 @@ async function loadSessionChat(sessionID) {
 
         if (working) chatContainer.appendChild(working);
         smoothScrollToBottom();
-    } catch (e) { }
+    } catch (e) {
+        console.error('[loadSessionChat] Error:', e);
+    }
 }
 
 async function renderPendingApprovals() {
@@ -443,9 +526,15 @@ async function sendMessage() {
     userInput.value = '';
     userInput.style.height = '24px';
 
+    // Disable send button
+    const sendBtn = document.querySelector('.send-btn');
+    if (sendBtn) sendBtn.disabled = true;
+
     try {
         const url = new URL(`${SERVER_URL}/session/${currentSessionID}/prompt_async`);
         url.searchParams.set('directory', WORKSPACE_DIR);
+
+        console.log('[sendMessage] Sending to backend...');
         const response = await fetch(url.href, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -456,12 +545,17 @@ async function sendMessage() {
             updateBusyStatus(false);
             const errorText = await response.text();
             showToast(`Request failed: ${response.status} - ${errorText}`, 'error');
+            console.error('[sendMessage] Error:', response.status, errorText);
+        } else {
+            console.log('[sendMessage] Request sent successfully, waiting for SSE updates...');
+            // 轮询加载聊天，确保显示更新
+            setTimeout(() => loadSessionChat(currentSessionID, true), 500);
         }
         // Note: SSE events will handle updating the UI with the response
     } catch (e) {
         updateBusyStatus(false);
         showToast(`Failed to send message: ${e.message}`, 'error');
-        console.error('Send message error:', e);
+        console.error('[sendMessage] Exception:', e);
     }
 }
 

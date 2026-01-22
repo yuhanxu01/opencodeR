@@ -2,7 +2,7 @@
 const SERVER_URL = window.SERVER_URL || 'http://127.0.0.1:4096';
 const WORKSPACE_DIR = window.WORKSPACE_DIR || '/Users/renqing/Downloads/opencode-research';
 
-// Configure Marked
+// Configure Marked with KaTeX support
 if (window.marked) {
     marked.setOptions({
         headerIds: false,
@@ -10,6 +10,46 @@ if (window.marked) {
         breaks: true,
         gfm: true
     });
+
+    // Add KaTeX rendering extension
+    const renderer = new marked.Renderer();
+    const originalParagraph = renderer.paragraph.bind(renderer);
+    const originalCode = renderer.code.bind(renderer);
+
+    // Handle inline math: $...$ and display math: $$...$$
+    renderer.paragraph = function(text) {
+        // Handle display math blocks $$...$$
+        text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, equation) => {
+            try {
+                return window.katex ? katex.renderToString(equation, { displayMode: true, throwOnError: false }) : match;
+            } catch (e) {
+                return match;
+            }
+        });
+        // Handle inline math $...$
+        text = text.replace(/\$([^\$\n]+?)\$/g, (match, equation) => {
+            try {
+                return window.katex ? katex.renderToString(equation, { displayMode: false, throwOnError: false }) : match;
+            } catch (e) {
+                return match;
+            }
+        });
+        return originalParagraph(text);
+    };
+
+    // Handle code blocks with language "math"
+    renderer.code = function(code, language) {
+        if (language === 'math' && window.katex) {
+            try {
+                return katex.renderToString(code, { displayMode: true, throwOnError: false });
+            } catch (e) {
+                return originalCode(code, language);
+            }
+        }
+        return originalCode(code, language);
+    };
+
+    marked.setOptions({ renderer });
 }
 
 // DOM Elements
@@ -143,18 +183,18 @@ function handleServerEvent(event) {
 
         if (event.type === 'permission.asked') {
             pendingPermissions.add(event.id);
-            loadSessionChat(currentSessionID, true);
+            loadSessionChat(currentSessionID, false); // 使用增量更新
         }
 
         if (event.type === 'permission.replied') {
             pendingPermissions.delete(event.requestID);
-            loadSessionChat(currentSessionID, true);
+            loadSessionChat(currentSessionID, false); // 使用增量更新
         }
 
-        // 实时更新消息内容
+        // 实时更新消息内容 - 使用增量更新而不是强制刷新
         if (event.type?.includes('message') || event.type?.includes('part')) {
-            console.log('[Content Update] Reloading chat...');
-            loadSessionChat(currentSessionID, true);
+            console.log('[Content Update] Incremental reload...');
+            loadSessionChat(currentSessionID, false); // 依赖状态比较，增量更新
         }
     }
 }
@@ -186,7 +226,7 @@ function updateBusyStatus(busy) {
             pollInterval = setInterval(() => {
                 if (currentSessionID && isBusy) {
                     console.log('[Poll] Checking for updates...');
-                    loadSessionChat(currentSessionID, true);
+                    loadSessionChat(currentSessionID, false); // 使用增量更新
                 }
             }, 2000); // 每2秒轮询一次
         }
@@ -413,17 +453,28 @@ async function loadSessionChat(sessionID, forceUpdate = false) {
             return;
         }
 
-        console.log('[loadSessionChat] Rendering', messages.length, 'messages');
+        console.log('[loadSessionChat] Incremental update for', messages.length, 'messages');
         lastRenderedState = currentState;
 
+        // 保存 working indicator
         const working = document.getElementById('working-indicator');
-        chatContainer.innerHTML = '';
+
+        // 获取现有的消息元素
+        const existingMessages = Array.from(chatContainer.querySelectorAll('.message[data-msg-idx]'));
+        const existingApprovals = Array.from(chatContainer.querySelectorAll('.approval-card'));
+
+        // 移除旧的 approval cards（它们会被重新添加）
+        existingApprovals.forEach(el => el.remove());
 
         let hasTasks = false;
         let tasks = [];
 
-        messages.forEach(msg => {
-            renderFullMessage(msg);
+        // 增量更新消息
+        messages.forEach((msg, idx) => {
+            const msgId = `msg-${idx}`;
+            const msgHash = generateMessageHash(msg);
+            let existingMsg = existingMessages.find(el => el.dataset.msgIdx === String(idx));
+
             // Collect tasks for right sidebar
             msg.parts.forEach(p => {
                 if (p.type === 'tool' && p.state.metadata?.summary) {
@@ -431,6 +482,33 @@ async function loadSessionChat(sessionID, forceUpdate = false) {
                     hasTasks = true;
                 }
             });
+
+            // 如果消息已存在且未变化，跳过
+            if (existingMsg && existingMsg.dataset.msgHash === msgHash) {
+                return;
+            }
+
+            // 如果消息变化或不存在，重新渲染
+            const newMsgElement = renderFullMessage(msg, idx, msgHash);
+
+            if (existingMsg) {
+                // 替换现有消息
+                existingMsg.replaceWith(newMsgElement);
+            } else {
+                // 添加新消息（在 working indicator 之前）
+                if (working && working.parentNode === chatContainer) {
+                    chatContainer.insertBefore(newMsgElement, working);
+                } else {
+                    chatContainer.appendChild(newMsgElement);
+                }
+            }
+        });
+
+        // 移除多余的旧消息
+        existingMessages.forEach((el, idx) => {
+            if (idx >= messages.length) {
+                el.remove();
+            }
         });
 
         // Update Right Sidebar
@@ -444,11 +522,28 @@ async function loadSessionChat(sessionID, forceUpdate = false) {
         // Show pending permissions as cards if not already in conversation
         await renderPendingApprovals();
 
-        if (working) chatContainer.appendChild(working);
+        // 确保 working indicator 在最后
+        if (working && working.parentNode !== chatContainer) {
+            chatContainer.appendChild(working);
+        }
+
         smoothScrollToBottom();
     } catch (e) {
         console.error('[loadSessionChat] Error:', e);
     }
+}
+
+// 生成消息的哈希值用于比较
+function generateMessageHash(msg) {
+    return JSON.stringify({
+        role: msg.info.role,
+        parts: msg.parts.map(p => ({
+            type: p.type,
+            text: p.text,
+            tool: p.tool,
+            state: p.state
+        }))
+    });
 }
 
 async function renderPendingApprovals() {
@@ -548,8 +643,8 @@ async function sendMessage() {
             console.error('[sendMessage] Error:', response.status, errorText);
         } else {
             console.log('[sendMessage] Request sent successfully, waiting for SSE updates...');
-            // 轮询加载聊天，确保显示更新
-            setTimeout(() => loadSessionChat(currentSessionID, true), 500);
+            // 轮询加载聊天，确保显示更新（使用增量更新）
+            setTimeout(() => loadSessionChat(currentSessionID, false), 500);
         }
         // Note: SSE events will handle updating the UI with the response
     } catch (e) {
@@ -579,10 +674,17 @@ function smoothScrollToBottom() {
     });
 }
 
-function renderFullMessage(msgObj) {
+function renderFullMessage(msgObj, idx, msgHash) {
     const role = msgObj.info.role;
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
+
+    // 添加数据属性用于增量更新
+    if (idx !== undefined) {
+        messageDiv.dataset.msgIdx = idx;
+        messageDiv.dataset.msgHash = msgHash || '';
+    }
+
     msgObj.parts.forEach(part => {
         if (part.type === 'text') {
             const textNode = document.createElement('div');
@@ -617,7 +719,8 @@ function renderFullMessage(msgObj) {
             messageDiv.appendChild(toolBlock);
         }
     });
-    chatContainer.appendChild(messageDiv);
+
+    return messageDiv;
 }
 
 // Global exposure

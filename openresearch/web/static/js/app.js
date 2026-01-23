@@ -110,6 +110,17 @@ async function newChat() {
     rightSidebar.style.display = 'none';
 }
 
+function openHelp() {
+    const helpModal = document.getElementById('helpModal');
+    if (helpModal) helpModal.style.display = 'flex';
+}
+
+function closeHelp() {
+    const helpModal = document.getElementById('helpModal');
+    if (helpModal) helpModal.style.display = 'none';
+}
+
+
 function toggleSelectionMode() {
     const historyList = document.getElementById('historyList');
     const btn = document.querySelector('.header-action-btn');
@@ -735,9 +746,48 @@ window.sendMessage = sendMessage;
 window.replyPermission = replyPermission;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
+window.openHelp = openHelp;
+window.closeHelp = closeHelp;
 window.deleteSession = deleteSession;
 window.deleteSelectedSessions = deleteSelectedSessions;
 window.toggleSelectionMode = toggleSelectionMode;
+
+function triggerQuickAction(action) {
+    const input = document.getElementById('userInput');
+    if (!input) return;
+
+    let text = "";
+    if (action === 'search') {
+        text = "帮我检索关于 [你的主题] 的论文，并总结关键发现。";
+    } else if (action === 'analysis') {
+        text = "深度分析这个课题：[你的课题]，包括当前挑战和未来方向。";
+    } else if (action === 'review') {
+        text = "帮我根据[主题]撰写一份文献综述，重点关注最新的研究进展。";
+    } else if (action === 'comparison') {
+        text = "对比[方法A]和[方法B]在[应用场景]下的优缺点。";
+    } else if (action === 'recommend') {
+        text = "推荐与[主题]相关的重要论文，包括经典论文和最新进展。";
+    } else if (action === 'ideas') {
+        text = "针对[研究问题]提供研究思路和可行的方法建议。";
+    } else if (action === 'trends') {
+        text = "分析[领域]的最新研究趋势和未来发展方向。";
+    } else if (action === 'data') {
+        text = "帮我分析和可视化[数据类型]数据，提供深入见解。";
+    }
+
+    input.value = text;
+    input.style.height = 'auto';
+    input.style.height = input.scrollHeight + 'px';
+    input.focus();
+
+    // Select the placeholder part for easy editing
+    const start = text.indexOf('[');
+    const end = text.indexOf(']') + 1;
+    if (start !== -1 && end !== -1) {
+        input.setSelectionRange(start, end);
+    }
+}
+window.triggerQuickAction = triggerQuickAction;
 
 // Input handling
 userInput?.addEventListener('keydown', (e) => {

@@ -5,7 +5,54 @@
     <div class="welcome-screen" id="welcomeScreen">
         <div class="brand-logo">OR</div>
         <h1>How can I help you today?</h1>
-        <p>OpenResearch can help you organize literature, write code, and explore complex research questions.</p>
+        <p>我可以帮你检索论文、分析文献、对比方法，或回答研究相关问题。点击下方按钮快速开始，或直接输入你的问题。</p>
+
+        <div class="quick-actions">
+            <button class="action-btn" onclick="triggerQuickAction('search')">
+                <span class="icon">🔍</span>
+                <span class="label">学术检索</span>
+                <span class="desc">Find relevant papers</span>
+            </button>
+            <button class="action-btn" onclick="triggerQuickAction('analysis')">
+                <span class="icon">🧠</span>
+                <span class="label">深度分析</span>
+                <span class="desc">Deep topic analysis</span>
+            </button>
+            <button class="action-btn" onclick="triggerQuickAction('review')">
+                <span class="icon">📝</span>
+                <span class="label">文献综述</span>
+                <span class="desc">Generate review</span>
+            </button>
+            <button class="action-btn" onclick="triggerQuickAction('comparison')">
+                <span class="icon">⚖️</span>
+                <span class="label">方法对比</span>
+                <span class="desc">Compare methods</span>
+            </button>
+            <button class="action-btn" onclick="triggerQuickAction('recommend')">
+                <span class="icon">📚</span>
+                <span class="label">论文推荐</span>
+                <span class="desc">Recommend papers</span>
+            </button>
+            <button class="action-btn" onclick="triggerQuickAction('ideas')">
+                <span class="icon">💡</span>
+                <span class="label">研究思路</span>
+                <span class="desc">Research ideas</span>
+            </button>
+            <button class="action-btn" onclick="triggerQuickAction('trends')">
+                <span class="icon">🔄</span>
+                <span class="label">趋势分析</span>
+                <span class="desc">Trend analysis</span>
+            </button>
+            <button class="action-btn" onclick="triggerQuickAction('data')">
+                <span class="icon">📊</span>
+                <span class="label">数据分析</span>
+                <span class="desc">Data analysis</span>
+            </button>
+        </div>
+
+        <div class="feature-hint">
+            <p>💡 <strong>提示：</strong>你可以用自然语言提问，比如"帮我找关于深度学习的最新论文"或"对比BERT和GPT的优缺点"</p>
+        </div>
     </div>
 </div>
 
@@ -52,9 +99,12 @@
     }
 
     @keyframes float {
-        0%, 100% {
+
+        0%,
+        100% {
             transform: translateY(0);
         }
+
         50% {
             transform: translateY(-10px);
         }
@@ -72,6 +122,96 @@
         max-width: 520px;
         line-height: 1.6;
         font-size: 1rem;
+        margin-bottom: 40px;
+    }
+
+    .quick-actions {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-top: 10px;
+        width: 100%;
+        max-width: 900px;
+        justify-items: center;
+    }
+
+    .action-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px 24px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+        width: 100%;
+        max-width: 200px;
+    }
+
+    .action-btn:hover {
+        background: var(--bg-hover);
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    .action-btn .icon {
+        font-size: 28px;
+        margin-bottom: 12px;
+    }
+
+    .action-btn .label {
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+        font-size: 1rem;
+    }
+
+    .action-btn .desc {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    .feature-hint {
+        margin-top: 32px;
+        padding: 16px 24px;
+        background: rgba(59, 130, 246, 0.08);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        border-radius: 12px;
+        max-width: 900px;
+        width: 100%;
+    }
+
+    .feature-hint p {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        color: var(--text-secondary);
+    }
+
+    .feature-hint strong {
+        color: var(--accent);
+    }
+
+    /* Responsive design for smaller screens */
+    @media (max-width: 1024px) {
+        .quick-actions {
+            grid-template-columns: repeat(2, 1fr);
+            max-width: 600px;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .quick-actions {
+            grid-template-columns: repeat(1, 1fr);
+            max-width: 300px;
+        }
+
+        .feature-hint {
+            font-size: 0.85rem;
+        }
     }
 </style>
 {% endblock %}
